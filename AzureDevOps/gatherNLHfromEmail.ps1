@@ -29,7 +29,7 @@ class nlhRecord {
 function main {
 
     $strElasticSearchIndex = "nolongerhere"
-    $strElasticSearchServer = "LT-14763.corp._CompanyNameHere_.com"
+    $strElasticSearchServer = "LT-14763.corp.sanmar.com"
 
     $nlhInfoTable = [System.Collections.ArrayList]@()
 

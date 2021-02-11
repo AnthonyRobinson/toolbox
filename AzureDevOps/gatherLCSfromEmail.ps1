@@ -18,36 +18,37 @@ class lcsRecord {
 function main {
 
     $strElasticSearchIndex = "lcsdeploys"
-    $strElasticSearchServer = "LT-14763.corp._CompanyNameHere_.com"
+    # $strElasticSearchServer = "LT-14763.corp.sanmar.com"
+    $strElasticSearchServer = "52.158.250.123"
 
     $lcsInfoTable = [System.Collections.ArrayList]@()
 
     $data = ""
 
     # foreach ($daysback in -3, -5, -10, -20, -300) {
-    foreach ($daysback in -14) {
+    foreach ($daysback in -600) {
 
-        write-host "Querying $daysback days back..."
+        Write-Host "Querying $daysback days back..."
 
         $lcsDeployStartTime = @{ }
         $lcsDeployInProgress = @{ }
 
-        $LCSenvList = "Bat", "eDEV", "eUAT", "STAGE", "Sandbox", "Master", "Test", "ConsTest", "Prod"
+        $LCSenvList = "Bat", "eDEV", "eUAT", "STAGE", "Sandbox", "Master", "Test", "constest", "Prod", "training"
 
-        Add-type -assembly "Microsoft.Office.Interop.Outlook" | out-null
+        Add-Type -assembly "Microsoft.Office.Interop.Outlook" | Out-Null
         $olFolders = "Microsoft.Office.Interop.Outlook.olDefaultFolders" -as [type]
-        $outlook = new-object -comobject outlook.application
+        $outlook = New-Object -ComObject outlook.application
         $namespace = $outlook.GetNameSpace("MAPI")
         $folder = $namespace.getDefaultFolder($olFolders::olFolderInBox)
 
         $messages = $folder.items | Where-Object { `
                 $_.SenderEmailAddress -like "lcsteam@microsoft.com" -and `
-                $_.SentOn -gt (get-date).AddDays($daysBack)
-        } | sort-object -Property SentOn
+                $_.SentOn -gt (Get-Date).AddDays($daysBack)
+        } | Sort-Object -Property SentOn
 
         foreach ($message in $messages) {
 
-            $lcsObject = new-object lcsRecord
+            $lcsObject = New-Object lcsRecord
 
             foreach ($line in ($message.body.split("`n"))) {
                 switch -wildcard ($line) {
@@ -75,7 +76,7 @@ function main {
                         $lcsObject.EnvironmentName = $line.split("<")[0].split(":")[-1].trimstart().trimend()
                         foreach ($env in $LCSenvList) {
                             if ($lcsObject.EnvironmentName -like "*$($env)*") {
-								$env
+                                $env
                                 $lcsObject.Environment = $env
                             }
                         }
@@ -89,7 +90,7 @@ function main {
                         $lcsObject.Update = $line.split(":")[-1].trimstart().trimend()
                         break
                     }
-					'*Package Name:*' {
+                    '*Package Name:*' {
                         $lcsObject.Update = $line.split(":")[-1].trimstart().trimend()
                         break
                     }
@@ -102,21 +103,21 @@ function main {
 
 
             if (!($lcsObject.EnvironmentName)) {
-                write-host "lcsObject.EnvironmentName is null - skipping"
+                Write-Host "lcsObject.EnvironmentName is null - skipping"
                 continue
             }
             if (!($lcsObject.EnvironmentId)) {
                 if ($tmp = ($message.htmlbody | findstr EnvironmentId)) {
                     if ($lcsObject.EnvironmentId = $tmp.substring($tmp.indexof("EnvironmentId=")).split("=")[1].split("&")[0]) {
-                        write-host "lcsObject.EnvironmentId inferred from message.htmlbody"
+                        Write-Host "lcsObject.EnvironmentId inferred from message.htmlbody"
                     }
                     else {
-                        write-host "lcsObject.EnvironmentId is null - skipping"
+                        Write-Host "lcsObject.EnvironmentId is null - skipping"
                         continue
                     }
                 }
                 else {
-                    write-host "lcsObject.EnvironmentId is null - skipping"
+                    Write-Host "lcsObject.EnvironmentId is null - skipping"
                     continue
                 }
             }
@@ -134,7 +135,7 @@ function main {
                 if ($lcsDeployStartTime.ContainsKey($lcsObject.EnvironmentName)) {
                     $lcsObject.StartTime = $lcsDeployStartTime.$($lcsObject.EnvironmentName).toUniversalTime().toString("MM/dd/yyyy HH:mm:ss")
                     $lcsObject.FinishTime = $message.senton.toUniversalTime().toString("MM/dd/yyyy HH:mm:ss")
-                    $lcsObject.ElapsedTime = (new-TimeSpan -start $lcsObject.startTime -end $lcsObject.finishTime).TotalMinutes
+                    $lcsObject.ElapsedTime = (New-TimeSpan -Start $lcsObject.startTime -End $lcsObject.finishTime).TotalMinutes
                     $lcsObject.goodDeployment = "Y"
                     $lcsDeployStartTime.remove($lcsObject.EnvironmentName)
                 }
@@ -142,7 +143,7 @@ function main {
                     $lcsObject.StartTime = $message.senton.toUniversalTime().toString("MM/dd/yyyy HH:mm:ss")
                     $lcsObject.FinishTime = $message.senton.toUniversalTime().toString("MM/dd/yyyy HH:mm:ss")
                     $lcsObject.goodDeployment = "N"
-                    $lcsObject.ElapsedTime = (new-TimeSpan -start $lcsObject.startTime -end $lcsObject.finishTime).TotalMinutes
+                    $lcsObject.ElapsedTime = (New-TimeSpan -Start $lcsObject.startTime -End $lcsObject.finishTime).TotalMinutes
                 }
             }
 
@@ -152,8 +153,8 @@ function main {
             if (!($lcsObject.Operation)) {
                 $lcsObject.Operation = "Deployment"
             }
-			
-			$lcsObject.EnvironmentId
+
+            $lcsObject.EnvironmentId
 
             $lcsObject.lcsKey = $lcsObject.EnvironmentId + $lcsObject.StartTime.ToString("yyyyMMdd_HHmm_ss")
 
@@ -199,7 +200,7 @@ function main {
         #        Format-Table
 
         if ($data) {
-            invoke-RestMethod -Uri http://$($strElasticSearchServer):9200/_bulk?pretty -Method POST -Body $data -ContentType "application/json"
+            Invoke-RestMethod -Uri http://$($strElasticSearchServer):9200/_bulk?pretty -Method POST -Body $data -ContentType "application/json"
             $data = ""
         }
     }

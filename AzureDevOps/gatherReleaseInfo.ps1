@@ -234,7 +234,7 @@ function getTheReleases {
 								}
 							}
 
-							$global:CreatedOn_Time = ([DateTime]::now).toUniversalTime().AddHours(-7).toString("MM/dd/yyyy HH:mm:ss")
+							$global:CreatedOn_Time = ([DateTime]::now).toUniversalTime().AddHours(-8).toString("MM/dd/yyyy HH:mm:ss")
 							$global:CreatedOn_TimeZ = ([DateTime]::now).ToUniversalTime().toString("MM/dd/yyyy HH:mm:ss")
 							$global:ModifiedOn_Time = $null
 							$global:ModifiedOn_TimeZ = $null

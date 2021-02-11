@@ -127,7 +127,7 @@ function uploadData {
     }
 }
 "@
-        $esString += $tmpString | ConvertFrom-Json | ConvertTo-Json -compress
+        $esString += $tmpString | ConvertFrom-Json | ConvertTo-Json -Compress
         $esString += "`n"
         $tmpString = @"
 {
@@ -146,7 +146,7 @@ function uploadData {
     "captureTime" : "$($captureTime)"
 }
 "@
-        $esString += $tmpString | ConvertFrom-Json | ConvertTo-Json -compress
+        $esString += $tmpString | ConvertFrom-Json | ConvertTo-Json -Compress
         $esString += "`n"
 
         $null = $esStringBuilder.Append($esString)
@@ -218,7 +218,8 @@ function getAndUploadData {
 
 
 $captureTime = ((Get-Date).toUniversalTime().toString("MM/dd/yyyy HH:mm:ss"))
-$strElasticSearchServer = "LT-14763.corp._CompanyNameHere_.com"
+# $strElasticSearchServer = "LT-14763.corp.sanmar.com"
+$strElasticSearchServer = "52.158.250.123"
 $strElasticSearchIndex = "azureresources"
 $azureTable = $null
 $azureTable = [System.Collections.ArrayList]@()

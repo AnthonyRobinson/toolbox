@@ -32,8 +32,8 @@ function main {
 
 		write-host "$($tenant)"
 
-		$tenantUrl = "https://$($tenant).visualstudio.com"
-		$PAT = "53sp5xvm6u42um2enqolfb7jbva4mpb2dtdjm6a7ypfy3brq7dwq"
+		$tenantUrl = "https://dev.azure.com/$($tenant)"
+		$PAT = $ENV:PAT
 		$headers = @{Authorization = 'Basic ' + [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$($PAT)"))}
 
 		$projects = (Invoke-RestMethod -Uri "$($tenantUrl)/_apis/projects?api-version=2.1" -Headers $headers).value

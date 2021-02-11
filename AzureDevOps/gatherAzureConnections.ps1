@@ -52,7 +52,7 @@ function convertAzTypeToFriendlyName($azureType) {
 }
 
 function deletePreviousData {
-    write-host "Deleting previous ES data..."
+    Write-Host "Deleting previous ES data..."
 
     $esStringBuilder = New-Object System.Text.StringBuilder(4096000)
 
@@ -61,7 +61,7 @@ function deletePreviousData {
 {"query": { "match_all" : {}}}
 
 "@
-        $ids = (invoke-RestMethod -Uri http://$($strElasticSearchServer):9200/$($strElasticSearchIndex)/_search?size=1000 -Method POST -Body $esString -ContentType "application/json").hits.hits._id
+        $ids = (Invoke-RestMethod -Uri http://$($strElasticSearchServer):9200/$($strElasticSearchIndex)/_search?size=1000 -Method POST -Body $esString -ContentType "application/json").hits.hits._id
         if ($ids) {
             foreach ($id in $ids) {
                 $esString = @"
@@ -71,7 +71,7 @@ function deletePreviousData {
                 $null = $esStringBuilder.Append($esString)
             }
             if ($esStringBuilder.length) {
-                $null = invoke-RestMethod -Uri http://$($strElasticSearchServer):9200/_bulk?pretty -Method POST -Body $esStringBuilder.ToString() -ContentType "application/json"
+                $null = Invoke-RestMethod -Uri http://$($strElasticSearchServer):9200/_bulk?pretty -Method POST -Body $esStringBuilder.ToString() -ContentType "application/json"
                 $esStringBuilder = $null
                 $esStringBuilder = New-Object System.Text.StringBuilder(4096000)
             }
@@ -81,7 +81,7 @@ function deletePreviousData {
         }
     }
     if ($esStringBuilder.length) {
-        $null = invoke-RestMethod -Uri http://$($strElasticSearchServer):9200/_bulk?pretty -Method POST -Body $esStringBuilder.ToString() -ContentType "application/json"
+        $null = Invoke-RestMethod -Uri http://$($strElasticSearchServer):9200/_bulk?pretty -Method POST -Body $esStringBuilder.ToString() -ContentType "application/json"
         $esStringBuilder = $null
         $esStringBuilder = New-Object System.Text.StringBuilder(4096000)
     }
@@ -103,7 +103,7 @@ function uploadData {
     }
 }
 "@
-        $esString += $tmpString | convertfrom-json | convertto-json -compress
+        $esString += $tmpString | ConvertFrom-Json | ConvertTo-Json -Compress
         $esString += "`n"
         $tmpString = @"
 {
@@ -122,13 +122,13 @@ function uploadData {
     "captureTime" : "$($captureTime)"
 }
 "@
-        $esString += $tmpString | convertfrom-json | convertto-json -compress
+        $esString += $tmpString | ConvertFrom-Json | ConvertTo-Json -Compress
         $esString += "`n"
 
         $null = $esStringBuilder.Append($esString)
     }
 
-    $tmp = invoke-RestMethod -Uri http://$($strElasticSearchServer):9200/_bulk?pretty -Method POST -Body $esStringBuilder.ToString() -ContentType "application/json"
+    $tmp = Invoke-RestMethod -Uri http://$($strElasticSearchServer):9200/_bulk?pretty -Method POST -Body $esStringBuilder.ToString() -ContentType "application/json"
     # write-host "      $($tmp.items.count) items written"
     $esStringBuilder = $null
     $azureTable = $null
@@ -136,43 +136,43 @@ function uploadData {
 }
 
 function getAndUploadData {
-    write-host "Getting data from Azure..."
+    Write-Host "Getting data from Azure..."
     #    foreach ($subscriptionName in (az.cmd account list | convertfrom-json).name) {
-    foreach ($subscriptionName in "_CompanyNameHere_ Development") {
-        write-host "   Subscription: $($subscriptionName)..."
-        if (!(test-path "c:\tmp\json\$($subscriptionName)")) {
+    foreach ($subscriptionName in "SanMar Development") {
+        Write-Host "   Subscription: $($subscriptionName)..."
+        if (!(Test-Path "c:\tmp\json\$($subscriptionName)")) {
             mkdir "c:\tmp\json\$($subscriptionName)"
         }
         $null = az.cmd account set --subscription $subscriptionName
-        foreach ($resourceGroup in (az.cmd group list --subscription $subscriptionName | convertfrom-json)) {
-            write-host "      Resource Group: $($resourceGroup.name)..."
+        foreach ($resourceGroup in (az.cmd group list --subscription $subscriptionName | ConvertFrom-Json)) {
+            Write-Host "      Resource Group: $($resourceGroup.name)..."
             foreach ($type in $resourceTypeHash.GetEnumerator()) {
                 $tmpAzureType = $type.Value[0]
-                write-host "         Type: $($tmpAzureType)..."
-                foreach ($resource in (az resource list --resource-type $tmpAzureType --resource-group $resourceGroup.name | convertfrom-json)) {
-                    write-host "            Resource Name: $($resource.name)..."
+                Write-Host "         Type: $($tmpAzureType)..."
+                foreach ($resource in (az resource list --resource-type $tmpAzureType --resource-group $resourceGroup.name | ConvertFrom-Json)) {
+                    Write-Host "            Resource Name: $($resource.name)..."
 
                     if ($tmpAzureType -like "Microsoft.ServiceBus/namespaces") {
                         $azCLI = "servicebus", "namespace", "authorization-rule", "keys", "list",
                         "--resource-group", "$($resourceGroup.name)",
                         "--namespace-name", "$($resource.name)",
                         "--name", "RootManageSharedAccessKey"
-                        (az.cmd @azCLI) | out-file "c:\tmp\json\$($subscriptionName)\$($resource.name).json" -encoding ascii
+                        (az.cmd @azCLI) | Out-File "c:\tmp\json\$($subscriptionName)\$($resource.name).json" -Encoding ascii
                     }
 
                     if ($tmpAzureType -like "Microsoft.Sql/servers/databases") {
-                        foreach ($db in (az resource list --resource-type "Microsoft.Sql/servers/databases" | convertfrom-json)) {
+                        foreach ($db in (az resource list --resource-type "Microsoft.Sql/servers/databases" | ConvertFrom-Json)) {
                             $dbServer = $db.name.split('/')[0]
                             $dbName = $db.name.split('/')[1]
                             # az sql db show --resource-group $dbs[0].resourceGroup --name $dbName --server $dbServer
                             foreach ($type in "ado.net", "sqlcmd", "jdbc", "php_pdo", "php", "odbc") {
                                 az sql db show-connection-string --name $dbName --server $dbServer --client $type |
-                                out-file "c:\tmp\json\$($subscriptionName)\$($dbServer).$($dbName).$($type).json" -encoding ascii
+                                    Out-File "c:\tmp\json\$($subscriptionName)\$($dbServer).$($dbName).$($type).json" -Encoding ascii
                             }
                         }
                     }
 
-                    $azureObject = new-object azureResourcesRecord
+                    $azureObject = New-Object azureResourcesRecord
 
                     $azureObject.key = $subscription.id + "_" + $resourceGroup.id + "_" + $resource.id
                     $azureObject.subscriptionId = $subscription.id
@@ -198,8 +198,9 @@ function getAndUploadData {
 }
 
 
-$captureTime = ((get-date).toUniversalTime().toString("MM/dd/yyyy HH:mm:ss"))
-$strElasticSearchServer = "LT-14763.corp._CompanyNameHere_.com"
+$captureTime = ((Get-Date).toUniversalTime().toString("MM/dd/yyyy HH:mm:ss"))
+# $strElasticSearchServer = "LT-14763.corp.sanmar.com"
+$strElasticSearchServer = "52.158.250.123"
 $strElasticSearchIndex = "azureresources"
 $azureTable = $null
 $azureTable = [System.Collections.ArrayList]@()

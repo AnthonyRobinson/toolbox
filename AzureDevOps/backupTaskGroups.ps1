@@ -28,7 +28,7 @@ function main {
 
 		Write-Host "$($tenant)"
 
-		$tenantUrl = "https://$($tenant).visualstudio.com"
+		$tenantUrl = "https://dev.azure.com/$($tenant)"
 
 		if ($PAT = ($PATSjson | ConvertFrom-Json).$($tenant)) {
 			$headers = @{Authorization = 'Basic ' + [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$($PAT)")) }
@@ -72,14 +72,32 @@ function main {
 				Write-Host "$($tenant) / $($project) / $($quality) / $($taskGroup.name)"
 				$taskGroup | ConvertTo-Json -Depth 100 | Out-File "$($backupFolder)\$($tmpName) $($taskGroup.version.major).$($taskGroup.version.minor).$($taskGroup.version.patch).json" -Encoding ascii
 
-				if (test-path "$($backupFolder)\$($tmpName) $($taskGroup.version.major).$($taskGroup.version.minor).$($taskGroup.version.patch).*.txt") {
-					remove-item "$($backupFolder)\$($tmpName) $($taskGroup.version.major).$($taskGroup.version.minor).$($taskGroup.version.patch).*.txt"
+				if (Test-Path "$($backupFolder)\$($tmpName) $($taskGroup.version.major).$($taskGroup.version.minor).$($taskGroup.version.patch).*.txt") {
+					Remove-Item "$($backupFolder)\$($tmpName) $($taskGroup.version.major).$($taskGroup.version.minor).$($taskGroup.version.patch).*.txt"
 				}
 
-				foreach ($task in $taskGroup.tasks) {
+				<# 				foreach ($task in $taskGroup.tasks) {
 					if ($script = $task.inputs.script) {
 						$tmp = get-random -Minimum 1000 -Maximum 9999
-						$script | Out-File "$($backupFolder)\$($tmpName) $($taskGroup.version.major).$($taskGroup.version.minor).$($taskGroup.version.patch).$($tmp).txt" -Encoding ascii
+						$script | Out-File "$($backupFolder)\$($tmpName) $($taskGroup.version.major).$($taskGroup.version.minor).$($taskGroup.version.patch).$($tmp).ps1" -Encoding ascii
+					}
+				} #>
+
+				for ($i = 0 ; $i -lt $taskGroup.tasks.count ; $i++) {
+					if ($script = $taskGroup.tasks[$i].inputs.script) {
+
+						$tmpName2 = $taskGroup.tasks[$i].displayName.replace(':', '-').replace('[', '-').replace(']', '-').replace('\', '-').replace('/', '-')
+
+						if ($taskGroup.tasks[$i].task.id -like "d9bafed4-0b18-4f58-968d-86655b4d2ce9") {
+							$extension = "cmd"
+						}
+						elseif ($taskGroup.tasks[$i].task.id -like "e213ff0f-5d5c-4791-802d-52ea3e7be1f1") {
+							$extension = "ps1"
+						}
+						else {
+							$extension = "txt"
+						}
+						$script | Out-File "$($backupFolder)\$($tmpName) $($taskGroup.version.major).$($taskGroup.version.minor).$($taskGroup.version.patch).$($i).$($tmpName2).$($extension)" -Encoding ascii
 					}
 				}
 			}

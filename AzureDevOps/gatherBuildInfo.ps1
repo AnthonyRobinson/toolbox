@@ -27,7 +27,7 @@
 
 
 param (
-    [string]$PATSjson = $null
+	[string]$PATSjson = $null
 )
 
 
@@ -38,19 +38,19 @@ function main {
 	. "$($scriptPath)\gatherIncludes.ps1"
 
 	$progressPreference = 'silentlyContinue'
-	$thisRunDateTimeUTC = (get-date).ToUniversalTime()
-	$thisRunDateTime = (get-date)
+	$thisRunDateTimeUTC = (Get-Date).ToUniversalTime()
+	$thisRunDateTime = (Get-Date)
 	$DEBUG = $false
 
-	if (!(Get-Module -ListAvailable -name SqlServer)) {
+	if (!(Get-Module -ListAvailable -Name SqlServer)) {
 		Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force
-		Install-module -Name SqlServer -Force -AllowClobber
+		Install-Module -Name SqlServer -Force -AllowClobber
 	}
 
 	# --- Set some defaults
 
 	if (!($projectUrl = $ENV:SYSTEM_TEAMFOUNDATIONSERVERURI)) {
-		$projectUrl = "https://_CompanyNameHere_cloud.visualstudio.com/"
+		$projectUrl = "https://dev.azure.com/sanmarcloud/"
 	}
 
 	$homeFolder = "c:\tmp"
@@ -66,10 +66,10 @@ function main {
 
 	if (!($minutesBack = $ENV:minutesBack)) {
 		try {
-			$tmp = invoke-RestMethod -Uri http://$($strElasticSearchServer):9200/timestamp/_doc/$($strESBuildIndex)
+			$tmp = Invoke-RestMethod -Uri http://$($strElasticSearchServer):9200/timestamp/_doc/$($strESBuildIndex)
 			$lastRunDateTime = [datetime]([string]$tmp._source.LastRunTime)
-			write-host "INFO: last run was at" $lastRunDateTime
-			$minutesBack = (new-TimeSpan -start $thisRunDateTimeUTC -end $lastRunDateTime).TotalMinutes
+			Write-Host "INFO: last run was at" $lastRunDateTime
+			$minutesBack = (New-TimeSpan -Start $thisRunDateTimeUTC -End $lastRunDateTime).TotalMinutes
 		}
 		catch {
 			$minutesBack = -200
@@ -78,9 +78,9 @@ function main {
 
 	$minutesBack = $minutesBack - 5
 
-	$strStartDate = (get-date).AddMinutes($minutesBack)
+	$strStartDate = (Get-Date).AddMinutes($minutesBack)
 
-	write-host "INFO: using minutesBack of" $minutesBack "and strStartDate" $strStartDate
+	Write-Host "INFO: using minutesBack of" $minutesBack "and strStartDate" $strStartDate
 
 	$personalAccessToken = $ENV:PAT
 	$OAuthToken = $ENV:System_AccessToken
@@ -92,11 +92,11 @@ function main {
 		$headers = @{Authorization = 'Basic ' + [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$($personalAccessToken)")) }
 	}
 	else {
-		write-error "Neither personalAccessToken nor OAuthToken are set"
+		Write-Error "Neither personalAccessToken nor OAuthToken are set"
 	}
 
 	if ($DEBUG) {
-		get-variable | format-table Name, Value
+		Get-Variable | Format-Table Name, Value
 	}
 
 	getTheBuilds
@@ -109,7 +109,7 @@ function main {
 
 function getTheBuilds {
 
-	$strStartDate = (get-date).AddMinutes($minutesBack).ToUniversalTime()
+	$strStartDate = (Get-Date).AddMinutes($minutesBack).ToUniversalTime()
 
 	$buildInfotable = [System.Collections.ArrayList]@()
 	$testInfotable = [System.Collections.ArrayList]@()
@@ -117,7 +117,7 @@ function getTheBuilds {
 	$dateTimeFieldNames = @()
 
 	try {
-		$mappings = (invoke-RestMethod -Uri "http://$($strElasticSearchServer):9200/$($strESBuildIndex)/_mappings").$($strESBuildIndex).mappings.data.properties
+		$mappings = (Invoke-RestMethod -Uri "http://$($strElasticSearchServer):9200/$($strESBuildIndex)/_mappings").$($strESBuildIndex).mappings.data.properties
 		foreach ($field in $mappings.PSObject.Properties) {
 			if ($field.value.type -eq "date") {
 				$dateTimeFieldNames += $field.name
@@ -125,26 +125,28 @@ function getTheBuilds {
 		}
 	}
 	catch {
-		write-warning "Unable to get index mappings"
-		write-host "##vso[task.logissue type=warning;] Unable to get index mappings"
+		Write-Warning "Unable to get index mappings"
+		Write-Host "##vso[task.logissue type=warning;] Unable to get index mappings"
 	}
-    
+
 
 	foreach ($tenant in $jsonConfiguration.tenants.name) {
 
-		write-host "Tenant", $tenant
-		
+		Write-Host "Tenant", $tenant
+
 		$projectUrl = (Invoke-RestMethod "https://dev.azure.com/_apis/resourceAreas/$($resourceAreaId.Build)?accountName=$($tenant)&api-version=5.0-preview.1").locationUrl
 
-		if ($PAT = ($PATSjson | convertfrom-json).$($tenant)) {
-			$headers = @{Authorization = 'Basic ' + [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$($PAT)"))}
-		} elseif ($PAT = ($ENV:PATSjson | convertfrom-json).$($tenant)) {
-			$headers = @{Authorization = 'Basic ' + [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$($PAT)"))}
-		} elseif ($PAT = ($jsonConfiguration.tenants | where { $_.name -like "$($tenant)" }).PAT) {
-			$headers = @{Authorization = 'Basic ' + [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$($PAT)"))}
+		if ($PAT = ($PATSjson | ConvertFrom-Json).$($tenant)) {
+			$headers = @{Authorization = 'Basic ' + [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$($PAT)")) }
+		}
+		elseif ($PAT = ($ENV:PATSjson | ConvertFrom-Json).$($tenant)) {
+			$headers = @{Authorization = 'Basic ' + [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$($PAT)")) }
+		}
+		elseif ($PAT = ($jsonConfiguration.tenants | Where-Object { $_.name -like "$($tenant)" }).PAT) {
+			$headers = @{Authorization = 'Basic ' + [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$($PAT)")) }
 		}
 
-		write-host "Creating Agent/Pool Hash Table..."
+		Write-Host "Creating Agent/Pool Hash Table..."
 
 		$agentPoolHash = @{ }
 		foreach ($pool in ((Invoke-RestMethod -Uri $projectUrl/_apis/distributedtask/pools -Headers $headers).value)) {
@@ -157,39 +159,41 @@ function getTheBuilds {
 
 		$buildTrackerJobHash = @{}
 
-		if ($strProjects = ($jsonConfiguration.tenants | where { $_.name -like "$($tenant)" }).projects) {
-			write-host "Using projects from jsonConfiguration"
+		if ($strProjects = ($jsonConfiguration.tenants | Where-Object { $_.name -like "$($tenant)" }).projects) {
+			Write-Host "Using projects from jsonConfiguration"
 		}
 
 		foreach ($strProject in $strProjects) {
 
 			$project = $strProject.name
 
-			write-host "Project", "$($project)"
+			Write-Host "Project", "$($project)"
 
 			# -- Query the vNext Builds for this Project
 
 			$projectUrlProject = $projectUrl + '/' + $project
 
 			$buildPipelines = $null
-			
-			if ($buildPipelines = ($strProject | where { $_.name -like "$($project)" }).buildpipelines) {
-				write-host "Using buildpipelines from jsonConfiguration"
-			} else {
-				write-warning "No buildpipelines found in jsonConfiguration"
-				write-host "##vso[task.logissue type=warning;] No buildpipelines found in jsonConfiguration"
+
+			if ($buildPipelines = ($strProject | Where-Object { $_.name -like "$($project)" }).buildpipelines) {
+				Write-Host "Using buildpipelines from jsonConfiguration"
+			}
+			else {
+				Write-Warning "No buildpipelines found in jsonConfiguration"
+				Write-Host "##vso[task.logissue type=warning;] No buildpipelines found in jsonConfiguration"
 			}
 
 			foreach ($buildPipeline in $buildPipelines) {
 
-				write-host "$($tenant) / $($project) / $($buildPipeline)"
+				Write-Host "$($tenant) / $($project) / $($buildPipeline)"
 
 				if ($buildPipeline -match '^[0-9]+$') {
 					$buildPipelineIds = $buildPipeline
-				} else {
+				}
+				else {
 					$buildPipelinesApi = "/_apis/build/definitions?api-version=4.0&name=$($buildPipeline)"
-					write-host "$($tenant) / $($project) / $($buildPipeline) $($projectUrlProject + $buildPipelinesApi)"
-					$buildPipelineIds = (((Invoke-RestMethod ($projectUrlProject + $buildPipelinesApi) -Headers $headers).Value | where { $_.Type.equals("build") }).id)
+					Write-Host "$($tenant) / $($project) / $($buildPipeline) $($projectUrlProject + $buildPipelinesApi)"
+					$buildPipelineIds = (((Invoke-RestMethod ($projectUrlProject + $buildPipelinesApi) -Headers $headers).Value | Where-Object { $_.Type.equals("build") }).id)
 				}
 
 				foreach ($id in $buildPipelineIds) {
@@ -198,7 +202,7 @@ function getTheBuilds {
 					$quality = $buildDef.quality
 
 					if ($DEBUG) {
-						$buildDef | ConvertTo-json -depth 100 | out-file "$($homeFolder)\$($buildDef.id).buildDef.json" -encoding ascii
+						$buildDef | ConvertTo-Json -Depth 100 | Out-File "$($homeFolder)\$($buildDef.id).buildDef.json" -Encoding ascii
 					}
 
 					$buildsApi = '/_apis/build/builds?api-version=4.0&definitions=' + $id + '&minFinishTime=' + $strStartDate.ToString()
@@ -212,19 +216,19 @@ function getTheBuilds {
 
 							if ($build.queueTime -and $build.startTime -and $build.finishTime) {
 
-								write-host "$($tenant) / $($project) / $($buildPipeline) / $($build.definition.name) / $($build.buildNumber)"
+								Write-Host "$($tenant) / $($project) / $($buildPipeline) / $($build.definition.name) / $($build.buildNumber)"
 
 								$testLanguage = $null
 								$buildTestLanguage = $null
 
 								if ($DEBUG) {
-									$build | ConvertTo-json -depth 100 | out-file "$($homeFolder)\$($buildDef.id).$($build.id).build.json" -encoding ascii
+									$build | ConvertTo-Json -Depth 100 | Out-File "$($homeFolder)\$($buildDef.id).$($build.id).build.json" -Encoding ascii
 								}
 
 								$timeline = (Invoke-RestMethod ($build._links.timeline.href) -Headers $headers)
 
 								if ($DEBUG) {
-									$timeline | ConvertTo-json -depth 100 | out-file "$($homeFolder)\$($buildDef.id).$($build.id).$($timeline.id).timeline.json" -encoding ascii
+									$timeline | ConvertTo-Json -Depth 100 | Out-File "$($homeFolder)\$($buildDef.id).$($build.id).$($timeline.id).timeline.json" -Encoding ascii
 								}
 
 								#	$tmpBuildDef = (Invoke-RestMethod ($build.definition.url) -Headers $headers)
@@ -233,7 +237,7 @@ function getTheBuilds {
 
 								$tmpDemands = $null
 								if ($build.parameters) {
-									foreach ($field in ($build.parameters | convertfrom-json).PSObject.Properties) {
+									foreach ($field in ($build.parameters | ConvertFrom-Json).PSObject.Properties) {
 										$tmpDemands += "$($field.name)=$($field.value)\n"
 									}
 								}
@@ -266,7 +270,7 @@ function getTheBuilds {
 								# --- Get the build's error issues at the build record level
 
 								$buildErrorIssues = $null
-								if ($str1 = ($timeline.records.issues | where-object { $_.type -like "error" }).message) {
+								if ($str1 = ($timeline.records.issues | Where-Object { $_.type -like "error" }).message) {
 									$str2 = $str1.replace('\', '/')
 									$str3 = ""
 									foreach ($line in $str2) {
@@ -307,25 +311,27 @@ function getTheBuilds {
 								$testResultsSummary = Invoke-RestMethod "https://$($tenant).vstmr.visualstudio.com/$($project)/_apis/testresults/resultsummarybybuild?buildId=$($build.id)" -Headers $headers
 
 								if ($DEBUG) {
-									$testResultsSummary | ConvertTo-json -depth 100 | out-file "$($homeFolder)\$($buildDef.id).$($build.id).$($timeline.id).testResultsSummary.json" -encoding ascii
+									$testResultsSummary | ConvertTo-Json -Depth 100 | Out-File "$($homeFolder)\$($buildDef.id).$($build.id).$($timeline.id).testResultsSummary.json" -Encoding ascii
 								}
 
 								if ($testResultsSummary.aggregatedResultsAnalysis.totalTests) {
 									$thisBuildHasTestResults = $true
-								} else {
+								}
+								else {
 									if ($project -like "One") {
 										$thisBuildHasTestResults = $true
-									} else {
+									}
+									else {
 										$thisBuildHasTestResults = $false
 									}
 								}
 
-#								if ($build.result -like "Failed") {
+								#								if ($build.result -like "Failed") {
 								if ($thisBuildHasTestResults) {
 
 									if ($testResultsByBuild = Invoke-RestMethod "https://$($tenant).vstmr.visualstudio.com/$($project)/_apis/tcm/ResultsByBuild?buildId=$($build.id)" -Headers $headers) {
 										if ($DEBUG) {
-											$testResultsByBuild | ConvertTo-json -depth 100 | out-file "$($homeFolder)\$($buildDef.id).$($build.id).$($timeline.id).testResultsByBuild.json" -encoding ascii
+											$testResultsByBuild | ConvertTo-Json -Depth 100 | Out-File "$($homeFolder)\$($buildDef.id).$($build.id).$($timeline.id).testResultsByBuild.json" -Encoding ascii
 										}
 										if (!($testLanguage)) {
 											foreach ($lang in "en", "ar", "de", "zh-hant") {
@@ -338,23 +344,23 @@ function getTheBuilds {
 
 										$Atilde = 0xc3 -as [char]
 										$Ssect = 0xa7 -as [char]
-										
+
 										foreach ($value in $testResultsByBuild.value) {
 
-											$tmpTestKey = [string]$build.id + "_" + [string]$value.id + "_" + [string]$value.runId  + "_" + [string]$value.refId
+											$tmpTestKey = [string]$build.id + "_" + [string]$value.id + "_" + [string]$value.runId + "_" + [string]$value.refId
 											$tmpURL = $projectUrlProject + "/_build/results?buildId=" + $build.id
-											
-											$tmpAutomatedTestName		= $($value.automatedTestName).Replace('\', '/').Replace('"', "'")
-											$tmpAutomatedTestName		= [Text.Encoding]::ASCII.GetString([Text.Encoding]::GetEncoding("Cyrillic").GetBytes($tmpAutomatedTestName))
-											$tmpAutomatedTestName		= $tmpAutomatedTestName.TrimEnd(" -")
-											
+
+											$tmpAutomatedTestName = $($value.automatedTestName).Replace('\', '/').Replace('"', "'")
+											$tmpAutomatedTestName = [Text.Encoding]::ASCII.GetString([Text.Encoding]::GetEncoding("Cyrillic").GetBytes($tmpAutomatedTestName))
+											$tmpAutomatedTestName = $tmpAutomatedTestName.TrimEnd(" -")
+
 											$tmpAutomatedTestStorage	= $($value.automatedTestStorage).Replace('\', '/').Replace('"', "'")
 											$tmpAutomatedTestStorage	= [Text.Encoding]::ASCII.GetString([Text.Encoding]::GetEncoding("Cyrillic").GetBytes($tmpAutomatedTestStorage))
-											
-											$tmpTestCaseTitle			= $($value.testCaseTitle).Replace('\', '/').Replace('"', "'").Replace('\', '/').Replace('"', "'")
-											$tmpTestCaseTitle			= [Text.Encoding]::ASCII.GetString([Text.Encoding]::GetEncoding("Cyrillic").GetBytes($tmpTestCaseTitle))
 
-											$testObject = new-object TestRecord
+											$tmpTestCaseTitle = $($value.testCaseTitle).Replace('\', '/').Replace('"', "'").Replace('\', '/').Replace('"', "'")
+											$tmpTestCaseTitle = [Text.Encoding]::ASCII.GetString([Text.Encoding]::GetEncoding("Cyrillic").GetBytes($tmpTestCaseTitle))
+
+											$testObject = New-Object TestRecord
 
 											$testObject.TestKey = $tmpTestKey
 											$testObject.BuildID = $build.id
@@ -375,11 +381,11 @@ function getTheBuilds {
 											$testObject.automatedTestName = $($value.automatedTestName).Replace('\', '/').Replace('"', "'").Replace('ç','c').Replace($Atilde,'A').Replace($Ssect,'S') -replace "Fran.*ais","Fran..ais"
 											$testObject.automatedTestStorage = $($value.automatedTestStorage).Replace('\', '/').Replace('"', "'").Replace('ç','c').Replace($Atilde,'A').Replace($Ssect,'S') -replace "Fran.*ais","Fran..ais"
 											$testObject.testCaseTitle = $($value.testCaseTitle).Replace('\', '/').Replace('"', "'").Replace('ç','c').Replace($Atilde,'A').Replace($Ssect,'S') -replace "Fran.*ais","Fran..ais"
-											#>											
+											#>
 											$testObject.automatedTestName = $tmpAutomatedTestName
 											$testObject.automatedTestStorage = $tmpAutomatedTestStorage
 											$testObject.testCaseTitle = $tmpTestCaseTitle
-											
+
 											$testObject.owner = $value.owner
 											$testObject.duration = ($value.durationInMs / 1000)
 											$testObject.URL = $tmpURL
@@ -414,16 +420,16 @@ function getTheBuilds {
 "@
 									# https://msazure.vstmr.visualstudio.com/One/_apis/tcm/ResultsByBuild?buildId=23206552
 
-									$body = $body | convertfrom-json | convertto-json -compress -depth 100
+									$body = $body | ConvertFrom-Json | ConvertTo-Json -Compress -Depth 100
 									if ($testRunResponse = Invoke-RestMethod "$($projectUrl)/_apis/Contribution/HierarchyQuery/project/$($project)?api-version=5.0-preview.1" -Method POST -Body $body -ContentType "application/json" -header $headers) {
 
 										# "*** testRunResponse ***"
 
 										if ($DEBUG) {
-											$testRunResponse | ConvertTo-json -depth 100 | out-file "$($homeFolder)\$($buildDef.id).$($build.id).$($timeline.id).testRunResponse.json" -encoding ascii
+											$testRunResponse | ConvertTo-Json -Depth 100 | Out-File "$($homeFolder)\$($buildDef.id).$($build.id).$($timeline.id).testRunResponse.json" -Encoding ascii
 										}
 
-										write-host "$($tenant) / $($project) / $($buildPipeline) / $($build.definition.name) / $($build.buildNumber) / TestResponse"
+										Write-Host "$($tenant) / $($project) / $($buildPipeline) / $($build.definition.name) / $($build.buildNumber) / TestResponse"
 
 										$testPassCount = $testRunResponse.dataProviders.'ms.vss-test-web.test-tab-build-summary-data-provider'.aggregatedResultsAnalysis.resultsByOutcome.'2'.count
 										$testFailCount = $testRunResponse.dataProviders.'ms.vss-test-web.test-tab-build-summary-data-provider'.aggregatedResultsAnalysis.resultsByOutcome.'3'.count
@@ -441,9 +447,10 @@ function getTheBuilds {
 													if ($testRunId = $testResult.testRunId) {
 														if ($testRunIdHash.ContainsKey($testRunId)) {
 															$testRunResults = $testRunIdHash[$testRunId]
-														} else {
-															if (!($thisBuildHasTestResults)) {write-host "*** BAD PREDICTION ***"}
-															write-host "$($tenant) / $($project) / $($buildPipeline) / $($build.definition.name) / $($build.buildNumber) / testResponse / testRunResults"
+														}
+														else {
+															if (!($thisBuildHasTestResults)) { Write-Host "*** BAD PREDICTION ***" }
+															Write-Host "$($tenant) / $($project) / $($buildPipeline) / $($build.definition.name) / $($build.buildNumber) / testResponse / testRunResults"
 															$testRunResults = Invoke-RestMethod "$($projectUrlProject)/_apis/test/runs/$($testRunId)/results?api-version=5.0" -header $headers
 															$null = $testRunIdHash.Add($testRunId, $testRunResults)
 														}
@@ -451,14 +458,14 @@ function getTheBuilds {
 														# "*** testRunId ***"
 
 														if ($DEBUG) {
-															$testRunResults | ConvertTo-json -depth 100 | out-file "$($homeFolder)\$($buildDef.id).$($build.id).$($timeline.id).$($testRunId).testRunResults.json" -encoding ascii
+															$testRunResults | ConvertTo-Json -Depth 100 | Out-File "$($homeFolder)\$($buildDef.id).$($build.id).$($timeline.id).$($testRunId).testRunResults.json" -Encoding ascii
 														}
 
-														foreach ($failedOutcome in ($testRunResults.value | where {$_.outcome -like "Failed"})) {
+														foreach ($failedOutcome in ($testRunResults.value | Where-Object { $_.outcome -like "Failed" })) {
 
 															# "*** failedOutcome ***"
 
-															$strTmp1 = "Test Failure: " + $($failedOutcome.testRun.name) + " / "+ $($failedOutcome.testCase.name)
+															$strTmp1 = "Test Failure: " + $($failedOutcome.testRun.name) + " / " + $($failedOutcome.testCase.name)
 
 															if (!($testFailuresHashShort.ContainsKey($strTmp1))) {
 																$null = $testFailuresHashShort.Add($strTmp1, 1)
@@ -487,10 +494,10 @@ function getTheBuilds {
 								}
 
 								if ($testFailuresHashShort.count) {
-									$buildErrorIssues += ($testFailuresHashShort.GetEnumerator().name | sort-object | Select -Unique) -join '\n'
+									$buildErrorIssues += ($testFailuresHashShort.GetEnumerator().name | Sort-Object | Select-Object -Unique) -join '\n'
 								}
 								if ($testFailuresHashLong.count) {
-									$testFailures = ($testFailuresHashLong.GetEnumerator().name | sort-object | Select -Unique) -join '\n'
+									$testFailures = ($testFailuresHashLong.GetEnumerator().name | Sort-Object | Select-Object -Unique) -join '\n'
 								}
 
 								$aUmlat = 0xe4 -as [char]
@@ -509,13 +516,13 @@ function getTheBuilds {
 										}
 									}
 								}
-								
+
 								if ($testFailures) {
 									$testFailures = $testFailures.Replace("\n", "`n").Replace('\', '/').Replace("`r`n", "\n").Replace("`n", "\n").Replace("`t", "	").Replace('"', "'")
 									$testFailures = [Text.Encoding]::ASCII.GetString([Text.Encoding]::GetEncoding("Cyrillic").GetBytes($testFailures))
 								}
-								
-								
+
+
 								if ($buildTestLanguage) {
 									foreach ($line in $testInfotable) {
 										if (($line.BuildID -eq $build.id) -and (!($line.Language -eq $buildTestLanguage))) {
@@ -523,11 +530,11 @@ function getTheBuilds {
 										}
 									}
 								}
-	
+
 
 								$tmpURL = $projectUrlProject + "/_build/results?buildId=" + $build.id
 
-								$buildObject = new-object BuildRecord
+								$buildObject = New-Object BuildRecord
 
 								$buildObject.BuildKey = $build.id
 								$buildObject.BuildID = $build.id
@@ -548,8 +555,8 @@ function getTheBuilds {
 								$buildObject.Queue_TimeZ = ([DateTime]::Parse($build.queueTime)).ToUniversalTime().toString("MM/dd/yyyy HH:mm:ss")
 								$buildObject.Start_TimeZ = ([DateTime]::Parse($build.startTime)).ToUniversalTime().toString("MM/dd/yyyy HH:mm:ss")
 								$buildObject.Finish_TimeZ = ([DateTime]::Parse($build.finishTime)).ToUniversalTime().toString("MM/dd/yyyy HH:mm:ss")
-								$buildObject.Wait_Time = (new-TimeSpan -start $build.queueTime -end $build.startTime).TotalMinutes
-								$buildObject.Elapsed_Time = (new-TimeSpan -start $build.startTime -end $build.finishTime).TotalMinutes
+								$buildObject.Wait_Time = (New-TimeSpan -Start $build.queueTime -End $build.startTime).TotalMinutes
+								$buildObject.Elapsed_Time = (New-TimeSpan -Start $build.startTime -End $build.finishTime).TotalMinutes
 								$buildObject.Tenant = $tenant
 								$buildObject.Project = $build.project.name
 								$buildObject.Agent_Pool = $build.queue.name
@@ -571,7 +578,7 @@ function getTheBuilds {
 								$buildObject.TestFailPct = $testFailPct
 								$buildObject.TestPassPct = $testPassPct
 
-#								$null = $buildInfotable.Add($BuildObject)
+								#								$null = $buildInfotable.Add($BuildObject)
 
 								if ($processTimeLine) {
 
@@ -622,7 +629,7 @@ function getTheBuilds {
 										# write-host "$($project) / $($buildPipeline) / $($build.definition.name) / $($build.buildNumber)/$($item.type)"
 
 										if ($DEBUG) {
-											$item | ConvertTo-json -depth 100 | out-file "$($homeFolder)\$($buildDef.id).$($build.id).$($timeline.id).$($item.id).item.json" -encoding ascii
+											$item | ConvertTo-Json -Depth 100 | Out-File "$($homeFolder)\$($buildDef.id).$($build.id).$($timeline.id).$($item.id).item.json" -Encoding ascii
 										}
 
 										$errorIssues = $null
@@ -630,17 +637,16 @@ function getTheBuilds {
 
 										if ($item.type -like "Task" -and $project -like "One") {
 
-											switch ($item.name)
-											{
+											switch ($item.name) {
 												"Build" {
 													if ($item.log.url) {
 														$logData = $null
 														try {
-															$logData = (invoke-restmethod $item.log.url -headers $headers) -Split "`r`n"
+															$logData = (Invoke-RestMethod $item.log.url -Headers $headers) -Split "`r`n"
 														}
 														catch {
-															write-warning "WARNING: $($item.log.url) is not valid 1"
-															write-host "##vso[task.logissue type=warning;] WARNING: $($item.log.url) is not valid 1"
+															Write-Warning "WARNING: $($item.log.url) is not valid 1"
+															Write-Host "##vso[task.logissue type=warning;] WARNING: $($item.log.url) is not valid 1"
 														}
 														if ($logData) {
 															if ($item.result -like "failed") {
@@ -650,8 +656,8 @@ function getTheBuilds {
 																	$errorIssues += "BuildTrackerJob: $($buildTrackerUrl)`n"
 																}
 																catch {
-																	write-warning "WARNING: Unable to read buildTrackerUrl from $($item.log.url)"
-																	write-host "##vso[task.logissue type=warning;] WARNING: Unable to read buildTrackerUrl from $($item.log.url)"
+																	Write-Warning "WARNING: Unable to read buildTrackerUrl from $($item.log.url)"
+																	Write-Host "##vso[task.logissue type=warning;] WARNING: Unable to read buildTrackerUrl from $($item.log.url)"
 																}
 																$logFolderUNC = $null
 																try {
@@ -659,16 +665,16 @@ function getTheBuilds {
 																	$errorIssues += "BuildTrackerDrop: $($logFolderUNC)`n"
 																}
 																catch {
-																	write-warning "WARNING: Unable to read logFolderUNC from $($item.log.url)"
-																	write-host "##vso[task.logissue type=warning;] Unable to read logFolderUNC from $($item.log.url)"
+																	Write-Warning "WARNING: Unable to read logFolderUNC from $($item.log.url)"
+																	Write-Host "##vso[task.logissue type=warning;] Unable to read logFolderUNC from $($item.log.url)"
 																}
 
-																$tmp = measure-command {
-																	if (test-path $logFolderUNC) {
-																		foreach ($logFile in ((get-childitem -path "$($logFolderUNC)" -filter "buildtracker*.log").fullName)) {
-																			$tmpLogFile = get-content $logFile -encoding UTF8
-																			foreach ($errorPattern in " error: ", " [ERROR] "," error : ") {
-																				foreach ($hit in ($tmpLogFile | select-string -pattern $errorPattern -encoding UTF8)){
+																$tmp = Measure-Command {
+																	if (Test-Path $logFolderUNC) {
+																		foreach ($logFile in ((Get-ChildItem -Path "$($logFolderUNC)" -Filter "buildtracker*.log").fullName)) {
+																			$tmpLogFile = Get-Content $logFile -Encoding UTF8
+																			foreach ($errorPattern in " error: ", " [ERROR] ", " error : ") {
+																				foreach ($hit in ($tmpLogFile | Select-String -Pattern $errorPattern -Encoding UTF8)) {
 																					$errorIssues += "$($hit)`n"
 																					$buildTrackerJobErrorIssues += "$($hit)`n"
 																				}
@@ -677,18 +683,18 @@ function getTheBuilds {
 																		}
 																	}
 																}
-																write-host "Checking BuildTracker Logs for ERRORs took", $tmp.TotalSeconds, "seconds"
+																Write-Host "Checking BuildTracker Logs for ERRORs took", $tmp.TotalSeconds, "seconds"
 															}
 
 															if ($buildTrackerJobErrorIssues) {
 																$buildTrackerJobErrorIssues = $buildTrackerJobErrorIssues.Replace("\n", "`n").Replace('\', '/').Replace("`r`n", "\n").Replace("`n", "\n").Replace("`t", "	").Replace('"', "'")
 																$buildTrackerJobErrorIssues = [Text.Encoding]::ASCII.GetString([Text.Encoding]::GetEncoding("Cyrillic").GetBytes($buildTrackerJobErrorIssues))
-																$buildTrackerJobErrorIssues = makeUnique $buildTrackerJobErrorIssues | sort-object
+																$buildTrackerJobErrorIssues = makeUnique $buildTrackerJobErrorIssues | Sort-Object
 															}
 															if ($errorIssues) {
 																$errorIssues = $errorIssues.Replace("\n", "`n").Replace('\', '/').Replace("`r`n", "\n").Replace("`n", "\n").Replace("`t", "	").Replace('"', "'")
 																$errorIssues = [Text.Encoding]::ASCII.GetString([Text.Encoding]::GetEncoding("Cyrillic").GetBytes($errorIssues))
-																$errorIssues = makeUnique $errorIssues | sort-object
+																$errorIssues = makeUnique $errorIssues | Sort-Object
 															}
 
 															$buildTrackerJobId = $null
@@ -696,36 +702,37 @@ function getTheBuilds {
 																$buildTrackerJobId = (([string]($logData | Select-String " Build job scheduled with id " -CaseSensitive)).split(" "))[6]
 															}
 															catch {
-																write-warning "WARNING: Unable to read buildTrackerJobId from $($item.log.url)"
-																write-host "##vso[task.logissue type=warning;] Unable to read buildTrackerJobId from $($item.log.url)"
+																Write-Warning "WARNING: Unable to read buildTrackerJobId from $($item.log.url)"
+																Write-Host "##vso[task.logissue type=warning;] Unable to read buildTrackerJobId from $($item.log.url)"
 															}
 
-															if ($buildTrackerJobId) {															
+															if ($buildTrackerJobId) {
 																$clientAssembly = [System.Reflection.Assembly]::LoadFrom("\\reddog\public\Build\BTGitOriginServerChanger\Microsoft.BuildTracker.Client.dll")
 																$contractsAssembly = [System.Reflection.Assembly]::LoadFrom("\\reddog\public\Build\BTGitOriginServerChanger\Microsoft.BuildTracker.Contracts.dll")
 																$connectionUri = 'net.tcp://wabt.ntdev.corp.microsoft.com:9700/BuildTrackerApi'
 																$myService = [Microsoft.BuildTracker.Client.BuildTrackerService]::Connect($connectionUri)
 
-																$legQuery = new-Object Microsoft.BuildTracker.Client.LegInstanceQuery
+																$legQuery = New-Object Microsoft.BuildTracker.Client.LegInstanceQuery
 																$legQuery.JobInstanceIds = $buildTrackerJobId
 																$legInstances = $myService.QueryLegInstances($legQuery)
 
 																if ($DEBUG) {
-																	$legInstances | ConvertTo-json -depth 100 | out-file "$($homeFolder)\$($buildDef.id).$($build.id).$($timeline.id).$($item.id).$($buildTrackerJobId).btLegInstances.json" -encoding ascii
+																	$legInstances | ConvertTo-Json -Depth 100 | Out-File "$($homeFolder)\$($buildDef.id).$($build.id).$($timeline.id).$($item.id).$($buildTrackerJobId).btLegInstances.json" -Encoding ascii
 																}
 
 																if ($buildTrackerJobHash.ContainsKey([int]$buildTrackerJobId)) {
 																	$jobInstance = $buildTrackerJobHash[[int]$buildTrackerJobId]
-																} else {
-																	$jobQuery = new-Object Microsoft.BuildTracker.Client.JobInstanceQuery
+																}
+																else {
+																	$jobQuery = New-Object Microsoft.BuildTracker.Client.JobInstanceQuery
 																	$jobQuery.ProductId = $legInstances[0].ProductId
 																	$jobQuery.BranchId = $legInstances[0].BranchId
 																	$jobQuery.JobTypes = "BuildJob"
 																	$jobQuery.Status = "Finished"
 																	# $jobQuery.TopN = "10"
 																	$jobQuery.DateFromQueryType = "CompleteDateTime"
-																	$jobQuery.DateFrom = (get-date).AddMinutes($minutesBack).toUniversalTime()
-																	write-host "Calling BuildTracker API for ProductID $($jobQuery.ProductId) and BranchID $($jobQuery.BranchId)..."
+																	$jobQuery.DateFrom = (Get-Date).AddMinutes($minutesBack).toUniversalTime()
+																	Write-Host "Calling BuildTracker API for ProductID $($jobQuery.ProductId) and BranchID $($jobQuery.BranchId)..."
 																	$jobInstances = $myService.QueryJobInstances($jobQuery)
 																	foreach ($jobInstance in $jobInstances) {
 																		if (!($buildTrackerJobHash.ContainsKey([int]$jobInstance.id))) {
@@ -738,7 +745,7 @@ function getTheBuilds {
 																}
 
 																if ($DEBUG) {
-																	$jobInstance | ConvertTo-json -depth 100 | out-file "$($homeFolder)\$($buildDef.id).$($build.id).$($timeline.id).$($item.id).$($buildTrackerJobId).jobInstance.json" -encoding ascii
+																	$jobInstance | ConvertTo-Json -Depth 100 | Out-File "$($homeFolder)\$($buildDef.id).$($build.id).$($timeline.id).$($item.id).$($buildTrackerJobId).jobInstance.json" -Encoding ascii
 																}
 
 																<#
@@ -752,17 +759,17 @@ function getTheBuilds {
 
 																#>
 
-																$timeLineObject = new-object BuildRecord
+																$timeLineObject = New-Object BuildRecord
 
-																$tmpBuildKey = [string]$build.id + "_" + [string]$item.Parentid + "_" + [string]$item.id  + "_" + [int]$buildTrackerJobId
+																$tmpBuildKey = [string]$build.id + "_" + [string]$item.Parentid + "_" + [string]$item.id + "_" + [int]$buildTrackerJobId
 																$tmpBuildJob = $jobInstance.name
 
 																if ($jobInstance.StartDateTime) {
 																	$buildTrackerJobStartTime = $jobInstance.StartDateTime.toUniversalTime().AddHours(-7)
 																}
 																else {
-																	write-warning "WARNING: expected jobInstance.StartDateTime to be non-null"
-																	write-host "##vso[task.logissue type=warning;] WARNING: expected jobInstance.StartDateTime to be non-null"
+																	Write-Warning "WARNING: expected jobInstance.StartDateTime to be non-null"
+																	Write-Host "##vso[task.logissue type=warning;] WARNING: expected jobInstance.StartDateTime to be non-null"
 																	$buildTrackerJobStartTime = $item.startTime
 																}
 
@@ -770,8 +777,8 @@ function getTheBuilds {
 																	$buildTrackerJobFinishTime = $jobInstance.CompletedDateTime.toUniversalTime().AddHours(-7)
 																}
 																else {
-																	write-warning "WARNING: expected jobInstance.CompletedDateTime to be non-null"
-																	write-host "##vso[task.logissue type=warning;] WARNING: expected jobInstance.CompletedDateTime to be non-null"
+																	Write-Warning "WARNING: expected jobInstance.CompletedDateTime to be non-null"
+																	Write-Host "##vso[task.logissue type=warning;] WARNING: expected jobInstance.CompletedDateTime to be non-null"
 																	$buildTrackerJobFinishTime = $item.finishTime
 																}
 
@@ -779,8 +786,8 @@ function getTheBuilds {
 																	$buildTrackerJobQueueTime = $jobInstance.QueueDateTime.toUniversalTime().AddHours(-7)
 																}
 																else {
-																	write-warning "WARNING: expected jobInstance.QueueDateTime to be non-null"
-																	write-host "##vso[task.logissue type=warning;] WARNING: expected jobInstance.QueueDateTime to be non-null"
+																	Write-Warning "WARNING: expected jobInstance.QueueDateTime to be non-null"
+																	Write-Host "##vso[task.logissue type=warning;] WARNING: expected jobInstance.QueueDateTime to be non-null"
 																	$buildTrackerJobQueueTime = $item.startTime
 																}
 
@@ -801,10 +808,10 @@ function getTheBuilds {
 																$timeLineObject.Queue_TimeZ = ([DateTime]::Parse($buildTrackerJobQueueTime)).toUniversalTime().AddHours(-7).toString("MM/dd/yyyy HH:mm:ss")
 																$timeLineObject.Start_Time = ([DateTime]::Parse($buildTrackerJobStartTime)).toUniversalTime().AddHours(-7).toString("MM/dd/yyyy HH:mm:ss")
 																$timeLineObject.Start_TimeZ = ([DateTime]::Parse($buildTrackerJobStartTime)).toUniversalTime().AddHours(-7).toString("MM/dd/yyyy HH:mm:ss")
-																$timeLineObject.Wait_Time = (new-TimeSpan -start $buildTrackerJobQueueTime -end $buildTrackerJobStartTime).TotalMinutes
+																$timeLineObject.Wait_Time = (New-TimeSpan -Start $buildTrackerJobQueueTime -End $buildTrackerJobStartTime).TotalMinutes
 																$timeLineObject.Finish_Time = ([DateTime]::Parse($buildTrackerJobFinishTime)).toUniversalTime().AddHours(-7).toString("MM/dd/yyyy HH:mm:ss")
 																$timeLineObject.Finish_TimeZ = ([DateTime]::Parse($buildTrackerJobFinishTime)).toUniversalTime().AddHours(-7).toString("MM/dd/yyyy HH:mm:ss")
-																$timeLineObject.Elapsed_Time = (new-TimeSpan -start $buildTrackerJobStartTime -end $buildTrackerJobFinishTime).TotalMinutes
+																$timeLineObject.Elapsed_Time = (New-TimeSpan -Start $buildTrackerJobStartTime -End $buildTrackerJobFinishTime).TotalMinutes
 																$timeLineObject.Tenant = $tenant
 																$timeLineObject.Project = $build.project.name
 																$timeLineObject.Agent = $null
@@ -824,8 +831,8 @@ function getTheBuilds {
 																$firstLeg = $true
 
 																foreach ($legInstance in ($legInstances | `
-																							where {$_.Status -ne "6"} | `
-																							sort-object Order)) {
+																				Where-Object { $_.Status -ne "6" } | `
+																					Sort-Object Order)) {
 
 																	<#
 																	# --- DateTime fields from the BuildTracker LegInstance record
@@ -838,29 +845,31 @@ function getTheBuilds {
 
 																	#>
 
-																	$timeLineObject = new-object BuildRecord
+																	$timeLineObject = New-Object BuildRecord
 
 																	$tmpBuildKey = [string]$build.id + "_" + [string]$item.Parentid + "_" + [string]$item.id + "_" + [int]$buildTrackerJobId + "_" + [string]$leginstance.id
 
 																	if ($legInstance.ExecutingStartedTime) {
 																		$buildTrackerLegStartTime = $legInstance.ExecutingStartedTime.toUniversalTime().AddHours(-7)
-																	} else {
-																		write-warning "WARNING: expected legInstance.ExecutingStartedTime to be non-null"
-																		write-host "##vso[task.logissue type=warning;] WARNING: expected legInstance.ExecutingStartedTime to be non-null"
+																	}
+																	else {
+																		Write-Warning "WARNING: expected legInstance.ExecutingStartedTime to be non-null"
+																		Write-Host "##vso[task.logissue type=warning;] WARNING: expected legInstance.ExecutingStartedTime to be non-null"
 																		$buildTrackerLegStartTime = $itemStartTime
 																	}
 																	if ($legInstance.FinishedTime) {
 																		$buildTrackerLegFinishTime = $legInstance.FinishedTime.toUniversalTime().AddHours(-7)
-																	} else {
-																		write-warning "WARNING: expected legInstance.FinishedTime to be non-null"
-																		write-host "##vso[task.logissue type=warning;] WARNING: expected legInstance.FinishedTime to be non-null"
+																	}
+																	else {
+																		Write-Warning "WARNING: expected legInstance.FinishedTime to be non-null"
+																		Write-Host "##vso[task.logissue type=warning;] WARNING: expected legInstance.FinishedTime to be non-null"
 																		$buildTrackerLegFinishTime = $itemStartTime
 																	}
 
 																	$tmpErrorIssues = $null
 
 																	if ([int]$legInstance.exitcode -gt 0) {
-																	<#
+																		<#
 																		if (test-path $logFolderUNC) {
 																			foreach ($logFile in ((get-childitem -path "$($logFolderUNC)\logs" -filter "*$($leginstance.name)*.log" -recurse).fullName)) {
 																				foreach ($hit in (get-content $logFile -encoding UTF8 | select-string -pattern " error " -encoding UTF8)){
@@ -894,13 +903,14 @@ function getTheBuilds {
 																	$timeLineObject.Start_Time = ([DateTime]::Parse($buildTrackerLegStartTime)).toUniversalTime().AddHours(-7).toString("MM/dd/yyyy HH:mm:ss")
 																	$timeLineObject.Start_TimeZ = ([DateTime]::Parse($buildTrackerLegStartTime)).toUniversalTime().AddHours(-7).toString("MM/dd/yyyy HH:mm:ss")
 																	if ($firstLeg) {
-																		$timeLineObject.Wait_Time = (new-TimeSpan -start $buildTrackerJobStartTime -end $buildTrackerLegStartTime).TotalMinutes
-																	} else {
-																		$timeLineObject.Wait_Time = (new-TimeSpan -start $previousBuildTrackerLegFinishTime -end $buildTrackerLegStartTime).TotalMinutes
+																		$timeLineObject.Wait_Time = (New-TimeSpan -Start $buildTrackerJobStartTime -End $buildTrackerLegStartTime).TotalMinutes
+																	}
+																	else {
+																		$timeLineObject.Wait_Time = (New-TimeSpan -Start $previousBuildTrackerLegFinishTime -End $buildTrackerLegStartTime).TotalMinutes
 																	}
 																	$timeLineObject.Finish_Time = ([DateTime]::Parse($buildTrackerLegFinishTime)).toUniversalTime().AddHours(-7).toString("MM/dd/yyyy HH:mm:ss")
 																	$timeLineObject.Finish_TimeZ = ([DateTime]::Parse($buildTrackerLegFinishTime)).toUniversalTime().AddHours(-7).toString("MM/dd/yyyy HH:mm:ss")
-																	$timeLineObject.Elapsed_Time = (new-TimeSpan -start $buildTrackerLegStartTime -end $buildTrackerLegFinishTime).TotalMinutes
+																	$timeLineObject.Elapsed_Time = (New-TimeSpan -Start $buildTrackerLegStartTime -End $buildTrackerLegFinishTime).TotalMinutes
 																	$timeLineObject.Tenant = $tenant
 																	$timeLineObject.Project = $build.project.name
 																	$timeLineObject.Agent = $legInstance.machinename
@@ -960,7 +970,7 @@ function getTheBuilds {
 											}
 										}
 
-										if ($str1 = ($item.issues | where-object { $_.type -like "error" }).message) {
+										if ($str1 = ($item.issues | Where-Object { $_.type -like "error" }).message) {
 											$str2 = $str1.Replace('\', '/')
 											$str3 = ""
 											foreach ($line in $str2) {
@@ -972,21 +982,21 @@ function getTheBuilds {
 											$errorIssues += $str6.Replace('"', "'")
 											if ($item.log.url) {
 												try {
-													$logData = (invoke-restmethod $item.log.url -headers $headers) -Split "`r`n"
+													$logData = (Invoke-RestMethod $item.log.url -Headers $headers) -Split "`r`n"
 												}
 												catch {
-													write-warning "WARNING: $($item.log.url) is not valid 2"
-													write-host "##vso[task.logissue type=warning;] $($item.log.url) is not valid 2"
+													Write-Warning "WARNING: $($item.log.url) is not valid 2"
+													Write-Host "##vso[task.logissue type=warning;] $($item.log.url) is not valid 2"
 												}
 												if ($logData) {
-													foreach ($failure in ($logData | select-string -pattern "^Failure|^fatal error")) {
+													foreach ($failure in ($logData | Select-String -Pattern "^Failure|^fatal error")) {
 														$errorIssues += "`n" + $failure
 													}
 													$errorIssues += "`n`n" + $item.log.url
-													if ($tmp = ($logData | select-string "Rld schedule created") -split ("'")) {
+													if ($tmp = ($logData | Select-String "Rld schedule created") -split ("'")) {
 														if ($logFolder = $tmp[$tmp.count - 2]) {
-															foreach ($failuresXmlFile in ((get-childitem -path $logFolder -filter "failure*.xml" -recurse).fullName)) {
-																[xml]$failuresXmlContent = get-content $failuresXmlFile
+															foreach ($failuresXmlFile in ((Get-ChildItem -Path $logFolder -Filter "failure*.xml" -Recurse).fullName)) {
+																[xml]$failuresXmlContent = Get-Content $failuresXmlFile
 																if ($failuresXmlContent.Failures) {
 																	foreach ($failure in $failuresXmlContent.Failures) {
 																		foreach ($err in $failure.failure.log.testcase.error) {
@@ -1009,7 +1019,7 @@ function getTheBuilds {
 											$buildErrorIssues += "\n" + $errorIssues
 										}
 
-										$timeLineObject = new-object BuildRecord
+										$timeLineObject = New-Object BuildRecord
 
 										$tmpBuildKey = [string]$build.id + "_" + [string]$item.Parentid + "_" + [string]$item.id
 										$tmpBuildJob = $item.name.replace('\', '/').replace('"', "'")
@@ -1054,10 +1064,10 @@ function getTheBuilds {
 										$timeLineObject.Queue_TimeZ = ([DateTime]::Parse($build.queueTime)).ToUniversalTime().toString("MM/dd/yyyy HH:mm:ss")
 										$timeLineObject.Start_Time = ([DateTime]::Parse($itemStartTime)).toUniversalTime().AddHours(-7).toString("MM/dd/yyyy HH:mm:ss")
 										$timeLineObject.Start_TimeZ = ([DateTime]::Parse($itemStartTime)).ToUniversalTime().toString("MM/dd/yyyy HH:mm:ss")
-										$timeLineObject.Wait_Time = (new-TimeSpan -start $build.queueTime -end $itemStartTime).TotalMinutes
+										$timeLineObject.Wait_Time = (New-TimeSpan -Start $build.queueTime -End $itemStartTime).TotalMinutes
 										$timeLineObject.Finish_Time = ([DateTime]::Parse($tmpFinishTime)).toUniversalTime().AddHours(-7).toString("MM/dd/yyyy HH:mm:ss")
 										$timeLineObject.Finish_TimeZ = ([DateTime]::Parse($tmpFinishTime)).ToUniversalTime().toString("MM/dd/yyyy HH:mm:ss")
-										$timeLineObject.Elapsed_Time = (new-TimeSpan -start $itemStartTime -end $tmpFinishTime).TotalMinutes
+										$timeLineObject.Elapsed_Time = (New-TimeSpan -Start $itemStartTime -End $tmpFinishTime).TotalMinutes
 										$timeLineObject.Tenant = $tenant
 										$timeLineObject.Project = $build.project.name
 										$timeLineObject.Agent = $item.workerName
@@ -1080,15 +1090,15 @@ function getTheBuilds {
 								$null = $buildInfotable.Add($BuildObject)
 							}
 							else {
-								write-warning "WARNING: Not an $($buildPipeline) build..."
-								write-host "##vso[task.logissue type=warning;] Not an $($buildPipeline) build..."
+								Write-Warning "WARNING: Not an $($buildPipeline) build..."
+								Write-Host "##vso[task.logissue type=warning;] Not an $($buildPipeline) build..."
 							}
 						}
 						else {
-							write-warning "WARNING: Build in progress..."
-							write-host "##vso[task.logissue type=warning;] Build in progress..."
+							Write-Warning "WARNING: Build in progress..."
+							Write-Host "##vso[task.logissue type=warning;] Build in progress..."
 						}
-						
+
 					}
 					if ($testInfotable.count -gt 10000) {
 						updateDBsForTestInfo
@@ -1100,18 +1110,18 @@ function getTheBuilds {
 				updateDBsForTestInfo
 				$testInfotable = $null
 				$testInfotable = [System.Collections.ArrayList]@()
-						
+
 				updateDBsForBuildInfo
 				$buildInfotable = $null
 				$buildInfotable = [System.Collections.ArrayList]@()
 			}
 		}
 	}
-	
+
 	# createSmallSqlTables
 
 	if ($updateElastic -and $updateLastRunTime) {
-		write-host "Updating LastRunTime time stamps..."
+		Write-Host "Updating LastRunTime time stamps..."
 		$esString += @"
 {"delete": {"_index": "timestamp","_type": "_doc","_id": "$($strESBuildIndex)"}}
 {"create": {"_index": "timestamp","_type": "_doc","_id": "$($strESBuildIndex)"}}
@@ -1119,10 +1129,10 @@ function getTheBuilds {
 
 "@
 		try {
-			invoke-RestMethod -Uri http://$($strElasticSearchServer):9200/_bulk?pretty -Method POST -Body $esString -ContentType "application/json"
+			Invoke-RestMethod -Uri http://$($strElasticSearchServer):9200/_bulk?pretty -Method POST -Body $esString -ContentType "application/json"
 		}
 		catch {
-			write-host "ERROR: updating LastRunTime"
+			Write-Host "ERROR: updating LastRunTime"
 			$esString
 			$_.Exception
 		}
@@ -1132,7 +1142,7 @@ function getTheBuilds {
 
 function updateDBsForBuildInfo {
 
-	write-host "Uploading BuildInfo to DBs..."
+	Write-Host "Uploading BuildInfo to DBs..."
 
 	$esString = $null
 	$sqlStringTmp = $null
@@ -1155,11 +1165,11 @@ GO
 			$null = $sqlStringDeleteBuilder.Append($sqlStringTmp)
 		}
 
-		$tmpVariables		= $line.Variables -replace "'", '"' -replace '\$\(', '\('
-		$tmpDemands			= $line.Demands -replace "'", '"' -replace '\$\(', '\('
-		$tmpErrorIssues		= $line.ErrorIssues -replace "'", '"' -replace '\$\(', '\('
+		$tmpVariables = $line.Variables -replace "'", '"' -replace '\$\(', '\('
+		$tmpDemands = $line.Demands -replace "'", '"' -replace '\$\(', '\('
+		$tmpErrorIssues = $line.ErrorIssues -replace "'", '"' -replace '\$\(', '\('
 		$tmpTestFailures	= $line.TestFailures -replace "'", '"' -replace '\$\(', '\('
-		$tmpBuildJob		= $line.BuildJob -replace '\$\(', '\(' -replace "'", '"'
+		$tmpBuildJob = $line.BuildJob -replace '\$\(', '\(' -replace "'", '"'
 
 		$sqlStringTmp = @"
 INSERT INTO $($strSqlTable) (
@@ -1255,7 +1265,7 @@ GO
 	}
 }
 "@
-			$esString = $tmpString | convertfrom-json | convertto-json -compress
+			$esString = $tmpString | ConvertFrom-Json | ConvertTo-Json -Compress
 			$esString += "`n"
 			$null = $esStringBuilder.Append($esString)
 		}
@@ -1269,7 +1279,7 @@ GO
 	}
 }
 "@
-		$esString = $tmpString | convertfrom-json | convertto-json -compress
+		$esString = $tmpString | ConvertFrom-Json | ConvertTo-Json -Compress
 		$esString += "`n"
 		$null = $esStringBuilder.Append($esString)
 
@@ -1315,7 +1325,7 @@ GO
 	"Test_Pass_Pct": "$($line.TestPassPct)"
 }
 "@
-		$esString = $tmpString | convertfrom-json | convertto-json -compress
+		$esString = $tmpString | ConvertFrom-Json | ConvertTo-Json -Compress
 		$esString += "`n"
 		$esString += "`n"
 		$null = $esStringBuilder.Append($esString)
@@ -1325,26 +1335,26 @@ GO
 				if ($sqlStringDeleteBuilder.length) {
 					$sqlStringTmp = $sqlStringDeleteBuilder.ToString()
 					try {
-						Invoke-SqlCmd $sqlStringTmp -ConnectionString "$($strSqlConnectionString)"  -QueryTimeout 300
+						Invoke-Sqlcmd $sqlStringTmp -ConnectionString "$($strSqlConnectionString)" -QueryTimeout 300
 					}
 					catch {
-						write-warning "WARNING: Deleting from SQL in updateDBsForBuildInfo"
+						Write-Warning "WARNING: Deleting from SQL in updateDBsForBuildInfo"
 						$_.Exception
 					}
 				}
 				if ($sqlStringInsertBuilder.length) {
 					$sqlStringTmp = $sqlStringInsertBuilder.ToString()
 
-					$tmp = measure-command {
+					$tmp = Measure-Command {
 						try {
-							Invoke-SqlCmd $sqlStringTmp -ConnectionString "$($strSqlConnectionString)"  -QueryTimeout 300
+							Invoke-Sqlcmd $sqlStringTmp -ConnectionString "$($strSqlConnectionString)" -QueryTimeout 300
 						}
 						catch {
-							write-warning "ERROR: writing to SQL in updateDBsForBuildInfo"
+							Write-Warning "ERROR: writing to SQL in updateDBsForBuildInfo"
 							$_.Exception
 						}
 					}
-					write-host "SQL Write", $intSqlBatchSize, $tmp.TotalSeconds
+					Write-Host "SQL Write", $intSqlBatchSize, $tmp.TotalSeconds
 				}
 			}
 			$sqlStringTmp = $null
@@ -1357,25 +1367,25 @@ GO
 		if (!($buildInfotable.IndexOf($line) % $intElasticSearchBatchSize)) {
 			if ($updateElastic) {
 				$esString = $esStringBuilder.ToString()
-				$tmp = measure-command {
+				$tmp = Measure-Command {
 					try {
-						$result = invoke-RestMethod -Uri http://$($strElasticSearchServer):9200/_bulk?pretty -Method POST -Body $esString -ContentType "application/json"
+						$result = Invoke-RestMethod -Uri http://$($strElasticSearchServer):9200/_bulk?pretty -Method POST -Body $esString -ContentType "application/json"
 						$result
 					}
 					catch {
-						write-warning "Errors writing to ES - Bulk Mode in updateDBsForBuildInfo"
+						Write-Warning "Errors writing to ES - Bulk Mode in updateDBsForBuildInfo"
 						$_.Exception
 					}
 				}
-				write-host "ES Write", $intElasticSearchBatchSize, $tmp.TotalSeconds
+				Write-Host "ES Write", $intElasticSearchBatchSize, $tmp.TotalSeconds
 				if ($result.errors) {
-					write-warning "Errors writing to ES - Bulk Mode in updateDBsForBuildInfo"
+					Write-Warning "Errors writing to ES - Bulk Mode in updateDBsForBuildInfo"
 					foreach ($resultItem in $result.items) {
 						if ($resultItem.create.error) {
-							$resultItem.create.error | convertto-json -depth 100
+							$resultItem.create.error | ConvertTo-Json -Depth 100
 						}
 					}
-					write-warning "Attempting to narrow down the error..."
+					Write-Warning "Attempting to narrow down the error..."
 					$tmpBody = $null
 					foreach ($esStringItem in $esString.split("`n")) {
 						if ($esStringItem.split(":")[0] -like "*delete*") {
@@ -1388,18 +1398,18 @@ GO
 							$tmpBody += $esStringItem + "`n`n"
 
 							try {
-								$result2 = invoke-RestMethod -Uri http://$($strElasticSearchServer):9200/_bulk?pretty -Method POST -Body $tmpBody -ContentType "application/json"
+								$result2 = Invoke-RestMethod -Uri http://$($strElasticSearchServer):9200/_bulk?pretty -Method POST -Body $tmpBody -ContentType "application/json"
 								$result2
 							}
 							catch {
-								write-warning "Errors writing to ES - Single Mode in updateDBsForBuildInfo"
+								Write-Warning "Errors writing to ES - Single Mode in updateDBsForBuildInfo"
 								$_.Exception
 							}
 							if ($result2.errors) {
-								write-warning "Errors writing to ES - Single Mode in updateDBsForBuildInfo"
+								Write-Warning "Errors writing to ES - Single Mode in updateDBsForBuildInfo"
 								foreach ($result2Item in $result2.items) {
 									if ($result2Item.create.error) {
-										$result2Item.create.error | convertto-json -depth 100
+										$result2Item.create.error | ConvertTo-Json -Depth 100
 									}
 								}
 								$tmpBody
@@ -1420,21 +1430,21 @@ GO
 		if ($esStringBuilder.length) {
 			$esString = $esStringBuilder.ToString()
 			try {
-				$result = invoke-RestMethod -Uri http://$($strElasticSearchServer):9200/_bulk?pretty -Method POST -Body $esString -ContentType "application/json"
+				$result = Invoke-RestMethod -Uri http://$($strElasticSearchServer):9200/_bulk?pretty -Method POST -Body $esString -ContentType "application/json"
 				$result
 			}
 			catch {
-				write-warning "Errors writing to ES - Bulk Mode in updateDBsForBuildInfo"
+				Write-Warning "Errors writing to ES - Bulk Mode in updateDBsForBuildInfo"
 				$_.Exception
 			}
 			if ($result.errors) {
-				write-warning "Errors writing to ES - Bulk Mode in updateDBsForBuildInfo"
+				Write-Warning "Errors writing to ES - Bulk Mode in updateDBsForBuildInfo"
 				foreach ($resultItem in $result.items) {
 					if ($resultItem.create.error) {
-						$resultItem.create.error | convertto-json -depth 100
+						$resultItem.create.error | ConvertTo-Json -Depth 100
 					}
 				}
-				write-warning "Attempting to narrow down the error..."
+				Write-Warning "Attempting to narrow down the error..."
 				$tmpBody = $null
 				foreach ($esStringItem in $esString.split("`n")) {
 					if ($esStringItem.split(":")[0] -like "*delete*") {
@@ -1447,18 +1457,18 @@ GO
 						$tmpBody += $esStringItem + "`n`n"
 
 						try {
-							$result2 = invoke-RestMethod -Uri http://$($strElasticSearchServer):9200/_bulk?pretty -Method POST -Body $tmpBody -ContentType "application/json"
+							$result2 = Invoke-RestMethod -Uri http://$($strElasticSearchServer):9200/_bulk?pretty -Method POST -Body $tmpBody -ContentType "application/json"
 							$result2
 						}
 						catch {
-							write-warning "Errors writing to ES - Single Mode in updateDBsForBuildInfo"
+							Write-Warning "Errors writing to ES - Single Mode in updateDBsForBuildInfo"
 							$_.Exception
 						}
 						if ($result2.errors) {
-							write-warning "Errors writing to ES - Single Mode in updateDBsForBuildInfo"
+							Write-Warning "Errors writing to ES - Single Mode in updateDBsForBuildInfo"
 							foreach ($result2Item in $result2.items) {
 								if ($result2Item.create.error) {
-									$result2Item.create.error | convertto-json -depth 100
+									$result2Item.create.error | ConvertTo-Json -Depth 100
 								}
 							}
 							$tmpBody
@@ -1476,20 +1486,20 @@ GO
 		if ($sqlStringDeleteBuilder.length) {
 			$sqlStringTmp = $sqlStringDeleteBuilder.ToString()
 			try {
-				Invoke-SqlCmd $sqlStringTmp -ConnectionString "$($strSqlConnectionString)"  -QueryTimeout 300
+				Invoke-Sqlcmd $sqlStringTmp -ConnectionString "$($strSqlConnectionString)" -QueryTimeout 300
 			}
 			catch {
-				write-warning "WARNING: Deleting from SQL in updateDBsForBuildInfo"
+				Write-Warning "WARNING: Deleting from SQL in updateDBsForBuildInfo"
 				$_.Exception
 			}
 		}
 		if ($sqlStringInsertBuilder.length) {
 			$sqlStringTmp = $sqlStringInsertBuilder.ToString()
 			try {
-				Invoke-SqlCmd $sqlStringTmp -ConnectionString "$($strSqlConnectionString)"  -QueryTimeout 300
+				Invoke-Sqlcmd $sqlStringTmp -ConnectionString "$($strSqlConnectionString)" -QueryTimeout 300
 			}
 			catch {
-				write-warning "ERROR: writing to SQL in updateDBsForBuildInfo"
+				Write-Warning "ERROR: writing to SQL in updateDBsForBuildInfo"
 				$_.Exception
 			}
 		}
@@ -1502,7 +1512,7 @@ GO
 
 function updateDBsForTestInfo {
 
-	write-host "Uploading TestInfo to DBs..."
+	Write-Host "Uploading TestInfo to DBs..."
 
 	$esString = $null
 	$sqlStringTmp = $null
@@ -1514,7 +1524,7 @@ function updateDBsForTestInfo {
 
 
 	foreach ($line in $testInfotable) {
-	
+
 		if ($deletePreviousSQLrecord) {
 			$sqlStringTmp = @"
 DELETE from $($strESTestIndex)
@@ -1524,11 +1534,11 @@ GO
 "@
 			$null = $sqlStringDeleteBuilder.Append($sqlStringTmp)
 		}
-		
-		$tmpAutomatedTestName = $($line.automatedTestName).Replace("'",'"')
-		$tmpAutomatedTestStorage = $($line.automatedTestStorage).Replace("'",'"')
-		$tmpTestCaseTitle = $($line.testCaseTitle).Replace("'",'"')
-		
+
+		$tmpAutomatedTestName = $($line.automatedTestName).Replace("'", '"')
+		$tmpAutomatedTestStorage = $($line.automatedTestStorage).Replace("'", '"')
+		$tmpTestCaseTitle = $($line.testCaseTitle).Replace("'", '"')
+
 		$sqlStringTmp = @"
 INSERT INTO $($strESTestIndex) (
 	Test_Key,
@@ -1589,7 +1599,7 @@ GO
 	}
 }
 "@
-			$esString = $tmpString | convertfrom-json | convertto-json -compress
+			$esString = $tmpString | ConvertFrom-Json | ConvertTo-Json -Compress
 			$esString += "`n"
 			$null = $esStringBuilder.Append($esString)
 		}
@@ -1603,7 +1613,7 @@ GO
 	}
 }
 "@
-		$esString = $tmpString | convertfrom-json | convertto-json -compress
+		$esString = $tmpString | ConvertFrom-Json | ConvertTo-Json -Compress
 		$esString += "`n"
 		$null = $esStringBuilder.Append($esString)
 
@@ -1631,36 +1641,36 @@ GO
 	"URL": "$($line.URL)"
 }
 "@
-		$esString = $tmpString | convertfrom-json | convertto-json -compress
+		$esString = $tmpString | ConvertFrom-Json | ConvertTo-Json -Compress
 		$esString += "`n"
 		$esString += "`n"
 		$null = $esStringBuilder.Append($esString)
-		
+
 		if (!($testInfotable.IndexOf($line) % $intSqlBatchSize)) {
 			if ($updateSQL) {
 				if ($sqlStringDeleteBuilder.length) {
 					$sqlStringTmp = $sqlStringDeleteBuilder.ToString()
 					try {
-						Invoke-SqlCmd $sqlStringTmp -ConnectionString "$($strSqlConnectionString)"  -QueryTimeout 300
+						Invoke-Sqlcmd $sqlStringTmp -ConnectionString "$($strSqlConnectionString)" -QueryTimeout 300
 					}
 					catch {
-						write-warning "WARNING: Deleting from SQL in updateDBsForTestInfo"
+						Write-Warning "WARNING: Deleting from SQL in updateDBsForTestInfo"
 						$_.Exception
 					}
 				}
 				if ($sqlStringInsertBuilder.length) {
 					$sqlStringTmp = $sqlStringInsertBuilder.ToString()
-					$tmp = measure-command {
+					$tmp = Measure-Command {
 						try {
-							Invoke-SqlCmd $sqlStringTmp -ConnectionString "$($strSqlConnectionString)"  -QueryTimeout 300
+							Invoke-Sqlcmd $sqlStringTmp -ConnectionString "$($strSqlConnectionString)" -QueryTimeout 300
 						}
 						catch {
-							write-warning "ERROR: writing to SQL in updateDBsForTestInfo"
+							Write-Warning "ERROR: writing to SQL in updateDBsForTestInfo"
 							$sqlStringTmp
 							$_.Exception
 						}
 					}
-					write-host "SQL Write", $intSqlBatchSize, $tmp.TotalSeconds
+					Write-Host "SQL Write", $intSqlBatchSize, $tmp.TotalSeconds
 				}
 			}
 			$sqlStringTmp = $null
@@ -1669,30 +1679,30 @@ GO
 			$sqlStringInsertBuilder = New-Object System.Text.StringBuilder(7000 * $($SqlBatchSize))
 			$sqlStringDeleteBuilder = New-Object System.Text.StringBuilder(150 * $($SqlBatchSize))
 		}
-		
+
 
 		if (!($testInfotable.IndexOf($line) % $intElasticSearchBatchSize)) {
 			if ($updateElastic) {
 				$esString = $esStringBuilder.ToString()
-				$tmp = measure-command {
+				$tmp = Measure-Command {
 					try {
-						$result = invoke-RestMethod -Uri http://$($strElasticSearchServer):9200/_bulk?pretty -Method POST -Body $esString -ContentType "application/json"
+						$result = Invoke-RestMethod -Uri http://$($strElasticSearchServer):9200/_bulk?pretty -Method POST -Body $esString -ContentType "application/json"
 						$result
 					}
 					catch {
-						write-warning "Errors writing to ES - Bulk Mode in updateDBsForTestInfo"
+						Write-Warning "Errors writing to ES - Bulk Mode in updateDBsForTestInfo"
 						$_.Exception
 					}
 				}
-				write-host "ES Write", $intElasticSearchBatchSize, $tmp.TotalSeconds
+				Write-Host "ES Write", $intElasticSearchBatchSize, $tmp.TotalSeconds
 				if ($result.errors) {
-					write-warning "Errors writing to ES - Bulk Mode"
+					Write-Warning "Errors writing to ES - Bulk Mode"
 					foreach ($resultItem in $result.items) {
 						if ($resultItem.create.error) {
-							$resultItem.create.error | convertto-json -depth 100
+							$resultItem.create.error | ConvertTo-Json -Depth 100
 						}
 					}
-					write-warning "Attempting to narrow down the error..."
+					Write-Warning "Attempting to narrow down the error..."
 					$tmpBody = $null
 					foreach ($esStringItem in $esString.split("`n")) {
 						if ($esStringItem.split(":")[0] -like "*delete*") {
@@ -1705,18 +1715,18 @@ GO
 							$tmpBody += $esStringItem + "`n`n"
 
 							try {
-								$result2 = invoke-RestMethod -Uri http://$($strElasticSearchServer):9200/_bulk?pretty -Method POST -Body $tmpBody -ContentType "application/json"
+								$result2 = Invoke-RestMethod -Uri http://$($strElasticSearchServer):9200/_bulk?pretty -Method POST -Body $tmpBody -ContentType "application/json"
 								$result2
 							}
 							catch {
-								write-warning "Errors writing to ES - Single Mode in updateDBsForTestInfo"
+								Write-Warning "Errors writing to ES - Single Mode in updateDBsForTestInfo"
 								$_.Exception
 							}
 							if ($result2.errors) {
-								write-warning "Errors writing to ES - Single Mode in updateDBsForTestInfo"
+								Write-Warning "Errors writing to ES - Single Mode in updateDBsForTestInfo"
 								foreach ($result2Item in $result2.items) {
 									if ($result2Item.create.error) {
-										$result2Item.create.error | convertto-json -depth 100
+										$result2Item.create.error | ConvertTo-Json -Depth 100
 									}
 								}
 								$tmpBody
@@ -1737,21 +1747,21 @@ GO
 		if ($esStringBuilder.length) {
 			$esString = $esStringBuilder.ToString()
 			try {
-				$result = invoke-RestMethod -Uri http://$($strElasticSearchServer):9200/_bulk?pretty -Method POST -Body $esString -ContentType "application/json"
+				$result = Invoke-RestMethod -Uri http://$($strElasticSearchServer):9200/_bulk?pretty -Method POST -Body $esString -ContentType "application/json"
 				$result
 			}
 			catch {
-				write-warning "Errors writing to ES - Bulk Mode in updateDBsForTestInfo"
+				Write-Warning "Errors writing to ES - Bulk Mode in updateDBsForTestInfo"
 				$_.Exception
 			}
 			if ($result.errors) {
-				write-warning "Errors writing to ES - Bulk Mode"
+				Write-Warning "Errors writing to ES - Bulk Mode"
 				foreach ($resultItem in $result.items) {
 					if ($resultItem.create.error) {
-						$resultItem.create.error | convertto-json -depth 100
+						$resultItem.create.error | ConvertTo-Json -Depth 100
 					}
 				}
-				write-warning "Attempting to narrow down the error..."
+				Write-Warning "Attempting to narrow down the error..."
 				$tmpBody = $null
 				foreach ($esStringItem in $esString.split("`n")) {
 					if ($esStringItem.split(":")[0] -like "*delete*") {
@@ -1764,18 +1774,18 @@ GO
 						$tmpBody += $esStringItem + "`n`n"
 
 						try {
-							$result2 = invoke-RestMethod -Uri http://$($strElasticSearchServer):9200/_bulk?pretty -Method POST -Body $tmpBody -ContentType "application/json"
+							$result2 = Invoke-RestMethod -Uri http://$($strElasticSearchServer):9200/_bulk?pretty -Method POST -Body $tmpBody -ContentType "application/json"
 							$result2
 						}
 						catch {
-							write-warning "Errors writing to ES - Single Mode in updateDBsForTestInfo"
+							Write-Warning "Errors writing to ES - Single Mode in updateDBsForTestInfo"
 							$_.Exception
 						}
 						if ($result2.errors) {
-							write-warning "Errors writing to ES - Single Mode in updateDBsForTestInfo"
+							Write-Warning "Errors writing to ES - Single Mode in updateDBsForTestInfo"
 							foreach ($result2Item in $result2.items) {
 								if ($result2Item.create.error) {
-									$result2Item.create.error | convertto-json -depth 100
+									$result2Item.create.error | ConvertTo-Json -Depth 100
 								}
 							}
 							$tmpBody
@@ -1788,25 +1798,25 @@ GO
 		$esString = $null
 		$null = $esStringBuilder.clear()
 	}
-	
+
 	if ($updateSQL) {
 		if ($sqlStringDeleteBuilder.length) {
 			$sqlStringTmp = $sqlStringDeleteBuilder.ToString()
 			try {
-				Invoke-SqlCmd $sqlStringTmp -ConnectionString "$($strSqlConnectionString)"  -QueryTimeout 300
+				Invoke-Sqlcmd $sqlStringTmp -ConnectionString "$($strSqlConnectionString)" -QueryTimeout 300
 			}
 			catch {
-				write-warning "WARNING: Deleting from SQL in updateDBsForTestInfo"
+				Write-Warning "WARNING: Deleting from SQL in updateDBsForTestInfo"
 				$_.Exception
 			}
 		}
 		if ($sqlStringInsertBuilder.length) {
 			$sqlStringTmp = $sqlStringInsertBuilder.ToString()
 			try {
-				Invoke-SqlCmd $sqlStringTmp -ConnectionString "$($strSqlConnectionString)"  -QueryTimeout 300
+				Invoke-Sqlcmd $sqlStringTmp -ConnectionString "$($strSqlConnectionString)" -QueryTimeout 300
 			}
 			catch {
-				write-warning "ERROR: writing to SQL in updateDBsForTestInfo"
+				Write-Warning "ERROR: writing to SQL in updateDBsForTestInfo"
 				$_.Exception
 			}
 		}
@@ -1819,45 +1829,45 @@ GO
 
 function createSmallSqlTables {
 
-	write-host "Creating SQL Week, Month, and Build-Only Tables..."
-	
+	Write-Host "Creating SQL Week, Month, and Build-Only Tables..."
+
 	$sqlString = @"
 drop table dbo.$($strSqlTable)Week
 go
 
-select * 
+select *
 into dbo.$($strSqlTable)Week
 from dbo.$($strSqlTable)
-where dbo.$($strSqlTable).Queue_Time > dateadd(week,-1,getdate()) 
+where dbo.$($strSqlTable).Queue_Time > dateadd(week,-1,getdate())
 go
 
 drop table dbo.$($strSqlTable)Month
 go
 
-select * 
+select *
 into dbo.$($strSqlTable)Month
 from dbo.$($strSqlTable)
-where dbo.$($strSqlTable).Queue_Time > dateadd(week,-5,getdate()) 
+where dbo.$($strSqlTable).Queue_Time > dateadd(week,-5,getdate())
 go
 
 drop table dbo.$($strSqlTable)Build
 go
 
-select * 
+select *
 into dbo.$($strSqlTable)Build
 from dbo.$($strSqlTable)
 where dbo.$($strSqlTable).RecordType = 'Build'
 go
 "@
-		
+
 	if ($DEBUG) { $sqlString }
-	
+
 	if ($updateSQL) {
 		try {
-			Invoke-SqlCmd $sqlString -ConnectionString "$($strSqlConnectionString)" -QueryTimeout 1800
+			Invoke-Sqlcmd $sqlString -ConnectionString "$($strSqlConnectionString)" -QueryTimeout 1800
 		}
 		catch {
-			write-host "ERROR: updating SQL"
+			Write-Host "ERROR: updating SQL"
 			$_.Exception
 			$sqlString
 		}
